@@ -1,0 +1,3 @@
+Require all allowed
+Options -Indexes
+DirectoryIndex index.php

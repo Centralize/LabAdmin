@@ -1,0 +1,4 @@
+/vendor/
+/data/*
+!/data/.htaccess
+/config.local.php
