@@ -3,7 +3,7 @@ declare(strict_types=1);
 
 require dirname(__DIR__) . '/src/bootstrap.php';
 
-header("Content-Security-Policy: default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'");
+header("Content-Security-Policy: default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self' ws: wss:; frame-ancestors 'none'; base-uri 'none'; form-action 'self'");
 header('X-Frame-Options: DENY');
 header('X-Content-Type-Options: nosniff');
 header('Referrer-Policy: no-referrer');
@@ -185,6 +185,48 @@ $v = static fn (string $f): string => $f . '?v=' . @filemtime(__DIR__ . '/' . $f
                 <label class="la-switch" id="exec-sudo-wrap" hidden><input type="checkbox" id="exec-sudo"> <span>sudo</span></label>
                 <button class="uk-button uk-button-primary">Run</button>
             </form>
+        </div>
+    </div>
+</div>
+
+<!-- ============ Interactive terminal ============ -->
+<div id="modal-term" class="uk-modal-full la-term-modal" uk-modal="bg-close: false; esc-close: false">
+    <div class="uk-modal-dialog la-term-dialog">
+        <div class="la-term-bar">
+            <span class="la-term-title" id="term-title">Terminal</span>
+            <span class="la-term-status" id="term-status"></span>
+            <div class="la-term-actions">
+                <button class="uk-button uk-button-default uk-button-small" id="term-font-down" title="Smaller text">A−</button>
+                <button class="uk-button uk-button-default uk-button-small" id="term-font-up" title="Larger text">A+</button>
+                <button class="uk-button uk-button-default uk-button-small" id="term-reconnect" hidden>Reconnect</button>
+                <button class="uk-button uk-button-default uk-button-small" id="term-close">Close</button>
+            </div>
+        </div>
+        <div class="la-term-body" id="term-body"></div>
+    </div>
+</div>
+
+<!-- ============ File editor ============ -->
+<div id="modal-edit" class="uk-modal-container" uk-modal="bg-close: false; esc-close: false">
+    <div class="uk-modal-dialog la-edit-dialog">
+        <div class="uk-modal-header">
+            <h2 class="uk-modal-title" id="edit-title">Edit file</h2>
+            <form id="edit-open" class="la-toolbar uk-margin-small-top">
+                <input class="uk-input la-grow la-mono" id="edit-path" list="edit-recent" placeholder="/etc/ssh/sshd_config" autocomplete="off" spellcheck="false">
+                <datalist id="edit-recent"></datalist>
+                <button class="uk-button uk-button-default">Open</button>
+            </form>
+        </div>
+        <div class="la-edit-body">
+            <div class="la-edit-gutter" id="edit-gutter" aria-hidden="true"></div>
+            <textarea class="la-edit-area" id="edit-area" spellcheck="false" wrap="off" disabled placeholder="Open a file to start editing"></textarea>
+        </div>
+        <div class="uk-modal-footer la-edit-foot">
+            <span class="uk-text-meta" id="edit-info"></span>
+            <span class="uk-text-meta la-num" id="edit-pos"></span>
+            <label class="la-switch" title="Keep a timestamped copy next to the file before saving"><input type="checkbox" id="edit-backup" checked> <span>Backup</span></label>
+            <button class="uk-button uk-button-default" id="edit-close">Close</button>
+            <button class="uk-button uk-button-primary" id="edit-save" disabled title="Ctrl+S">Save</button>
         </div>
     </div>
 </div>

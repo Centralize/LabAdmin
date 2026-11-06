@@ -341,7 +341,9 @@ function viewHost(id, tab) {
                 ${h.tags ? h.tags.split(',').map((t) => t.trim()).filter(Boolean).map((t) => `<span class="uk-label">${esc(t)}</span>`).join(' ') : ''}</div>
             </div>
             <div class="la-toolbar">
-                <button class="uk-button uk-button-default" data-act="host-shell" title="Run a command on the host">${icon('terminal')} Host shell</button>
+                <button class="uk-button uk-button-primary" data-act="host-term" title="Interactive terminal on the host">${icon('terminal')} Terminal</button>
+                <button class="uk-button uk-button-default" data-act="host-edit" title="Edit a file on the host">${icon('file-edit')} Edit file</button>
+                <button class="uk-button uk-button-default" data-act="host-shell" title="Run a single command and see its output">${icon('play-circle')} Run command</button>
                 <button class="uk-button uk-button-default" data-act="edit-host">${icon('cog')} Settings</button>
             </div>
         </div>
@@ -464,11 +466,13 @@ function renderCtRows(id) {
                 ${run ? `<button class="la-icon-btn halt" data-op="${has('shutdown') ? 'shutdown' : 'stop'}" title="${has('shutdown') ? 'Shutdown' : 'Stop'}">${icon('ban')}</button>` : ''}
                 ${run ? `<button class="la-icon-btn" data-op="restart" title="Restart">${icon('refresh')}</button>` : ''}
                 <button class="la-icon-btn" data-ct="logs" title="Logs">${icon('file-text')}</button>
-                <button class="la-icon-btn" data-ct="exec" title="Run command" ${run ? '' : 'disabled style="opacity:.35"'}>${icon('terminal')}</button>
+                <button class="la-icon-btn" data-ct="term" title="Terminal" ${run ? '' : 'disabled style="opacity:.35"'}>${icon('terminal')}</button>
                 <button class="la-icon-btn" title="More">${icon('more-vertical')}</button>
                 <div uk-dropdown="mode: click; pos: bottom-right; animation: false">
                     <ul class="uk-nav uk-dropdown-nav">
                         <li><a href="#" data-ct="inspect">${icon('code', 0.8)} Inspect / config</a></li>
+                        ${run ? `<li><a href="#" data-ct="edit">${icon('file-edit', 0.8)} Edit file…</a></li>
+                        <li><a href="#" data-ct="exec">${icon('play-circle', 0.8)} Run command…</a></li>` : ''}
                         ${run && has('pause') ? `<li><a href="#" data-op="pause">${icon('clock', 0.8)} Pause / freeze</a></li>` : ''}
                         ${run && has('shutdown') ? `<li><a href="#" data-op="stop">${icon('bolt', 0.8)} Force stop</a></li>` : ''}
                         ${run && has('kill') ? `<li><a href="#" data-op="kill">${icon('bolt', 0.8)} Kill</a></li>` : ''}
@@ -503,6 +507,8 @@ view.addEventListener('click', async (e) => {
     if (t.dataset.ct === 'logs') return openLogs(hostId, c);
     if (t.dataset.ct === 'inspect') return openInspect(hostId, c);
     if (t.dataset.ct === 'exec') return openExec(hostId, c);
+    if (t.dataset.ct === 'term') return openTerminal(hostId, c);
+    if (t.dataset.ct === 'edit') return openEditor(hostId, c);
     if (t.dataset.op) return ctAction(hostId, c, t.dataset.op, tr);
 });
 
@@ -531,6 +537,8 @@ async function onAct(act, hostId, el) {
         case 'add-host': return openHostForm(null);
         case 'edit-host': return openHostForm(hostById(hostId));
         case 'host-shell': return openExec(hostId, null);
+        case 'host-term': return openTerminal(hostId, null);
+        case 'host-edit': return openEditor(hostId, null);
         case 'forget-key': {
             try { await UIkit.modal.confirm('Forget the pinned host key and trust the key the server presents now? Only do this if you know the server was reinstalled or its keys changed.'); } catch { return; }
             await api('hosts.forgetKey', { id: hostId });
@@ -641,6 +649,24 @@ $('#exec-form').addEventListener('submit', async (e) => {
     if (!cmd) return;
     const out = $('#exec-out');
     if (cmd === 'clear') { out.innerHTML = ''; inp.value = ''; return; }
+    // Full-screen / interactive programs need a real terminal (TTY) - offer it instead of hanging.
+    const prog = cmd.replace(/^(sudo\s+(-\S+\s+)*)/, '').split(/\s+/)[0].replace(/^.*\//, '');
+    const interactive = ['vim', 'vi', 'nvim', 'nano', 'pico', 'emacs', 'mcedit', 'mc', 'top', 'htop', 'btop', 'atop', 'less', 'more', 'man',
+        'tmux', 'screen', 'ssh', 'su', 'bash', 'sh', 'zsh', 'mysql', 'mariadb', 'psql', 'sqlite3', 'redis-cli', 'python', 'python3', 'php', 'node',
+        'watch', 'passwd', 'visudo', 'crontab', 'dpkg-reconfigure', 'nmtui', 'alsamixer', 'iftop', 'nethogs', 'ncdu'];
+    const needsTty = interactive.includes(prog) && !(prog === 'crontab' && /\s-l\b/.test(cmd)) && !/\s(--version|-V|-v|--help)\b/.test(cmd)
+        && !(['sh', 'bash', 'zsh', 'python', 'python3', 'php', 'node'].includes(prog) && /\s-c\s|\s\S+\.(sh|py|php|js)\b/.test(cmd));
+    if (needsTty) {
+        out.insertAdjacentHTML('beforeend', `<span class="c-cmd">${esc($('#exec-prompt').textContent)} ${esc(cmd)}</span>\n`
+            + `<span class="c-err">'${esc(prog)}' is interactive and needs a real terminal - it would hang here.</span>\n`);
+        try {
+            await UIkit.modal.confirm(`<b>${esc(prog)}</b> needs an interactive terminal. Open the Terminal for ${esc(execCtx.c ? execCtx.c.name : hostById(execCtx.hostId).name)} instead?`, { labels: { ok: 'Open Terminal', cancel: 'Cancel' } });
+            const { hostId, c } = execCtx;
+            UIkit.modal('#modal-exec').hide();
+            openTerminal(hostId, c);
+        } catch { inp.focus(); }
+        return;
+    }
     execCtx.hist = [cmd, ...execCtx.hist.filter((x) => x !== cmd)].slice(0, 50);
     store.set('execHist', execCtx.hist);
     execCtx.pos = -1;
@@ -1049,6 +1075,287 @@ function viewAudit() {
     S.refresh = () => load(false);
     load(false);
 }
+
+// ---------------------------------------------------------------- Interactive terminal
+// xterm.js is loaded on first use; the session runs through bin/terminal-server.php (WebSocket).
+let xtermReady = null;
+function loadXterm() {
+    if (xtermReady) return xtermReady;
+    const load = (src) => new Promise((res, rej) => {
+        const el = document.createElement('script');
+        el.src = src;
+        el.onload = res;
+        el.onerror = () => rej(new Error(`Cannot load ${src}`));
+        document.head.appendChild(el);
+    });
+    const css = document.createElement('link');
+    css.rel = 'stylesheet';
+    css.href = 'assets/vendor/xterm/xterm.css';
+    document.head.appendChild(css);
+    xtermReady = load('assets/vendor/xterm/xterm.js').then(() => load('assets/vendor/xterm/addon-fit.js'))
+        .catch((e) => { xtermReady = null; throw e; });
+    return xtermReady;
+}
+
+const T = { term: null, fit: null, ws: null, ctx: null, ro: null, ended: false };
+
+function setTermStatus(text, cls = '') {
+    const el = $('#term-status');
+    el.innerHTML = `<span class="la-dot ${cls}"></span> ${esc(text)}`;
+}
+
+function disposeTerm() {
+    if (T.ws) { const ws = T.ws; T.ws = null; try { ws.close(); } catch { /* ignore */ } }
+    T.ro?.disconnect();
+    T.ro = null;
+    T.term?.dispose();
+    T.term = null;
+}
+
+async function openTerminal(hostId, c) {
+    try { await loadXterm(); } catch (e) { toast(e.message, 'danger'); return; }
+    const h = hostById(hostId);
+    T.ctx = { hostId, c };
+    $('#term-title').innerHTML = c
+        ? `${icon('terminal')} <b>${esc(c.name)}</b> <span class="uk-text-meta">${esc(c.flavor || c.engine)} on ${esc(h.name)}</span>`
+        : `${icon('terminal')} <b>${esc(h.username)}@${esc(h.name)}</b> <span class="uk-text-meta">${esc(h.hostname)}</span>`;
+    disposeTerm();
+    UIkit.modal('#modal-term').show();
+    /* global Terminal, FitAddon */
+    T.term = new Terminal({
+        fontFamily: '"Cascadia Mono", "JetBrains Mono", ui-monospace, Consolas, Menlo, monospace',
+        fontSize: store.get('termFont', 14),
+        cursorBlink: true,
+        scrollback: 5000,
+        macOptionIsMeta: true,
+        theme: {
+            background: '#0b0d0c', foreground: '#d7e2dc', cursor: '#4fb39c', cursorAccent: '#0b0d0c',
+            selectionBackground: '#2c4a43',
+            black: '#1b1f1d', red: '#ef6b5b', green: '#4cc27a', yellow: '#e0a84a', blue: '#6fb0ff', magenta: '#c78bf0', cyan: '#4fb39c', white: '#d7e2dc',
+            brightBlack: '#5e6862', brightRed: '#ff8f80', brightGreen: '#79dba0', brightYellow: '#f3c77a', brightBlue: '#9ccaff', brightMagenta: '#dcb0f7', brightCyan: '#7fd6c2', brightWhite: '#ffffff',
+        },
+    });
+    T.fit = new FitAddon.FitAddon();
+    T.term.loadAddon(T.fit);
+    T.term.open($('#term-body'));
+    T.term.onData((d) => { if (T.ws?.readyState === 1) T.ws.send(JSON.stringify({ t: 'd', d })); });
+    T.term.onResize(({ cols, rows }) => { if (T.ws?.readyState === 1) T.ws.send(JSON.stringify({ t: 'r', c: cols, r: rows })); });
+    T.ro = new ResizeObserver(() => { try { T.fit?.fit(); } catch { /* not visible yet */ } });
+    T.ro.observe($('#term-body'));
+    setTimeout(() => { try { T.fit.fit(); } catch { /* ignore */ } connectTerm(); T.term?.focus(); }, 120);
+}
+
+async function connectTerm() {
+    if (!T.term || !T.ctx) return;
+    const { hostId, c } = T.ctx;
+    T.ended = false;
+    $('#term-reconnect').hidden = true;
+    setTermStatus('Connecting…', 'loading');
+    let r;
+    try {
+        r = await api('term.open', c ? { host: hostId, engine: c.engine, id: c.id } : { host: hostId });
+    } catch (e) {
+        T.term.write(`\r\n\x1b[31m${e.message}\x1b[0m\r\n`);
+        setTermStatus('Not connected', 'bad');
+        $('#term-reconnect').hidden = false;
+        return;
+    }
+    const base = r.url || `${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.hostname}:${r.port}/`;
+    const url = `${base}${base.includes('?') ? '&' : '?'}token=${r.token}&cols=${T.term.cols}&rows=${T.term.rows}`;
+    const ws = new WebSocket(url);
+    ws.binaryType = 'arraybuffer';
+    T.ws = ws;
+    let opened = false;
+    ws.onopen = () => { opened = true; setTermStatus('Connected', 'ok'); T.term?.focus(); };
+    ws.onmessage = (ev) => {
+        if (typeof ev.data !== 'string') { T.term?.write(new Uint8Array(ev.data)); return; }
+        try {
+            const m = JSON.parse(ev.data);
+            if (m.t === 'x') {
+                T.ended = true;
+                setTermStatus(m.error ? 'Failed' : 'Session ended', m.error ? 'bad' : '');
+                $('#term-reconnect').hidden = false;
+            }
+        } catch { /* ignore */ }
+    };
+    ws.onclose = () => {
+        if (T.ws !== ws) return;
+        if (!opened) {
+            T.term?.write(`\r\n\x1b[31mCannot reach the terminal service at ${base}\x1b[0m\r\n`
+                + `\x1b[2mIs bin/terminal-server.php running, and is port ${r.port} open in the firewall of the machine running LabAdmin?\x1b[0m\r\n`);
+            setTermStatus('Not connected', 'bad');
+        } else if (!T.ended) {
+            T.term?.write('\r\n\x1b[2m# Disconnected\x1b[0m\r\n');
+            setTermStatus('Disconnected', 'bad');
+        }
+        $('#term-reconnect').hidden = false;
+    };
+}
+
+$('#term-close').addEventListener('click', () => {
+    if (T.ws?.readyState === 1 && !T.ended) {
+        UIkit.modal.confirm('Close the terminal? Programs still running in it (vim, top, …) will be terminated.')
+            .then(() => { disposeTerm(); UIkit.modal('#modal-term').hide(); }, () => T.term?.focus());
+        return;
+    }
+    disposeTerm();
+    UIkit.modal('#modal-term').hide();
+});
+$('#term-reconnect').addEventListener('click', () => { T.term?.reset(); connectTerm(); });
+const termFont = (d) => {
+    if (!T.term) return;
+    const sz = Math.max(9, Math.min(28, (T.term.options.fontSize || 14) + d));
+    T.term.options.fontSize = sz;
+    store.set('termFont', sz);
+    try { T.fit.fit(); } catch { /* ignore */ }
+    T.term.focus();
+};
+$('#term-font-up').addEventListener('click', () => termFont(1));
+$('#term-font-down').addEventListener('click', () => termFont(-1));
+UIkit.util.on('#modal-term', 'hidden', disposeTerm);
+window.addEventListener('beforeunload', (e) => { if (T.ws?.readyState === 1 && !T.ended) { e.preventDefault(); e.returnValue = ''; } });
+
+// ---------------------------------------------------------------- File editor
+const COMMON_FILES = ['/etc/ssh/sshd_config', '/etc/hosts', '/etc/hostname', '/etc/resolv.conf', '/etc/fstab',
+    '/etc/network/interfaces', '/etc/netplan/50-cloud-init.yaml', '/etc/crontab', '/etc/environment', '/etc/sudoers.d/labadmin'];
+const E = { hostId: null, c: null, path: '', eol: 'lf', version: '', exists: false, orig: '', loaded: false, busy: false };
+const area = $('#edit-area');
+
+function editorDirty() { return E.loaded && area.value !== E.orig; }
+
+function openEditor(hostId, c, path = '') {
+    const h = hostById(hostId);
+    Object.assign(E, { hostId, c, path: '', loaded: false, orig: '', version: '' });
+    $('#edit-title').innerHTML = `${icon('file-edit')} Edit file <span class="uk-text-meta">${c ? `in ${esc(c.name)} on ` : 'on '}${esc(h.name)}</span>`;
+    area.value = '';
+    area.disabled = true;
+    $('#edit-save').disabled = true;
+    $('#edit-info').textContent = '';
+    $('#edit-pos').textContent = '';
+    $('#edit-backup').checked = store.get('editBackup', true);
+    const recent = store.get('editRecent', []);
+    $('#edit-recent').innerHTML = [...new Set([...recent, ...COMMON_FILES])].map((p) => `<option value="${esc(p)}">`).join('');
+    $('#edit-path').value = path;
+    renderGutter();
+    UIkit.modal('#modal-edit').show();
+    setTimeout(() => (path ? loadFile(path) : $('#edit-path').focus()), 150);
+}
+
+async function loadFile(path) {
+    if (editorDirty()) {
+        try { await UIkit.modal.confirm('Discard your unsaved changes?'); } catch { return; }
+    }
+    E.busy = true;
+    $('#edit-info').innerHTML = '<span class="la-spinner"></span> Loading…';
+    try {
+        const { hostId, c } = E;
+        const r = await api('file.read', { host: hostId, path, ...(c ? { engine: c.engine, id: c.id } : {}) });
+        Object.assign(E, { path, eol: r.eol, version: r.version, exists: r.exists, orig: r.content, loaded: true });
+        area.value = r.content;
+        area.disabled = false;
+        area.readOnly = r.exists && !r.writable;
+        area.scrollTop = 0;
+        area.setSelectionRange(0, 0);
+        const recent = store.get('editRecent', []);
+        store.set('editRecent', [path, ...recent.filter((p) => p !== path)].slice(0, 15));
+        renderGutter();
+        updateEditInfo();
+        area.focus();
+    } catch (e) {
+        $('#edit-info').innerHTML = `<span class="uk-text-danger">${esc(e.message)}</span>`;
+    } finally { E.busy = false; }
+}
+
+function updateEditInfo(extra = '') {
+    if (!E.loaded) return;
+    const bits = [];
+    if (!E.exists) bits.push('new file – it will be created on save');
+    else {
+        if (area.readOnly) bits.push('<b class="uk-text-danger">read-only</b> (enable sudo for this server, or connect as root)');
+        if (E.eol === 'crlf') bits.push('Windows line endings (kept)');
+    }
+    if (editorDirty()) bits.unshift('<b>modified</b>');
+    $('#edit-info').innerHTML = (extra ? extra + ' · ' : '') + bits.join(' · ');
+    $('#edit-save').disabled = !editorDirty() || area.readOnly;
+    $('#edit-title').querySelector('.la-dirty')?.remove();
+    if (editorDirty()) $('#edit-title').insertAdjacentHTML('beforeend', '<span class="la-dirty" title="Unsaved changes">●</span>');
+}
+
+function renderGutter() {
+    const n = area.value.split('\n').length;
+    const g = $('#edit-gutter');
+    if (Number(g.dataset.n) !== n) {
+        g.dataset.n = n;
+        g.textContent = Array.from({ length: n }, (_, i) => i + 1).join('\n');
+    }
+    g.scrollTop = area.scrollTop;
+}
+
+function updatePos() {
+    const before = area.value.slice(0, area.selectionStart);
+    const line = before.split('\n').length;
+    const col = before.length - before.lastIndexOf('\n');
+    $('#edit-pos').textContent = E.loaded ? `Ln ${line}, Col ${col}` : '';
+}
+
+async function saveFile(force = false) {
+    if (!E.loaded || E.busy || area.readOnly) return;
+    E.busy = true;
+    $('#edit-save').disabled = true;
+    const content = area.value;
+    store.set('editBackup', $('#edit-backup').checked);
+    try {
+        const { hostId, c } = E;
+        const r = await api('file.write', {
+            host: hostId, path: E.path, content, eol: E.eol, version: E.exists ? E.version : '',
+            backup: $('#edit-backup').checked, force, ...(c ? { engine: c.engine, id: c.id } : {}),
+        });
+        Object.assign(E, { version: r.version, orig: content, exists: true });
+        updateEditInfo(`<span class="uk-text-success">Saved ${new Date().toLocaleTimeString()}</span>${r.backup ? ` · backup: <code>${esc(r.backup)}</code>` : ''}`);
+        toast(`Saved ${E.path}`, 'success');
+    } catch (e) {
+        E.busy = false;
+        if (e.data?.changed) {
+            try {
+                await UIkit.modal.confirm('<b>This file was changed on the server after you opened it.</b><br>Overwrite those changes with your version?', { labels: { ok: 'Overwrite', cancel: 'Cancel' } });
+                return saveFile(true);
+            } catch { updateEditInfo(); return; }
+        }
+        $('#edit-info').innerHTML = `<span class="uk-text-danger">${esc(e.message)}</span>`;
+        $('#edit-save').disabled = false;
+    } finally { E.busy = false; }
+}
+
+$('#edit-open').addEventListener('submit', (e) => {
+    e.preventDefault();
+    const p = $('#edit-path').value.trim();
+    if (p) loadFile(p);
+});
+$('#edit-save').addEventListener('click', () => saveFile(false));
+$('#edit-close').addEventListener('click', async () => {
+    if (editorDirty()) {
+        try { await UIkit.modal.confirm('Close without saving your changes?', { labels: { ok: 'Discard changes', cancel: 'Keep editing' } }); } catch { return; }
+    }
+    E.loaded = false;
+    UIkit.modal('#modal-edit').hide();
+});
+area.addEventListener('input', () => { renderGutter(); updateEditInfo(); updatePos(); });
+area.addEventListener('scroll', () => { $('#edit-gutter').scrollTop = area.scrollTop; });
+['keyup', 'click'].forEach((ev) => area.addEventListener(ev, updatePos));
+area.addEventListener('keydown', (e) => {
+    if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 's') { e.preventDefault(); saveFile(false); return; }
+    if (e.key === 'Tab' && !e.ctrlKey && !e.altKey && !area.readOnly) {
+        e.preventDefault();
+        // YAML forbids tabs – use two spaces there.
+        const ins = /\.ya?ml$/i.test(E.path) ? '  ' : '\t';
+        document.execCommand('insertText', false, ins) || area.setRangeText(ins, area.selectionStart, area.selectionEnd, 'end');
+        renderGutter(); updateEditInfo();
+    }
+});
+document.addEventListener('keydown', (e) => {
+    if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 's' && $('#modal-edit').classList.contains('uk-open')) { e.preventDefault(); saveFile(false); }
+});
+window.addEventListener('beforeunload', (e) => { if (editorDirty()) { e.preventDefault(); e.returnValue = ''; } });
 
 // ---------------------------------------------------------------- go
 boot().catch((e) => {

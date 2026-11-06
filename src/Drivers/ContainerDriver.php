@@ -37,6 +37,19 @@ abstract class ContainerDriver
 
     abstract protected function execCommand(string $id, string $cmd): string;
 
+    /** Command that starts an interactive login shell inside the container (run with a PTY). */
+    abstract public function terminalCommand(string $id): string;
+
+    /** The full command that runs a shell snippet inside the container (used by the file editor). */
+    public function wrapExec(string $id, string $cmd): string
+    {
+        return $this->execCommand($id, $cmd);
+    }
+
+    /** Shell snippet: prefer bash, fall back to sh; start in the home directory. */
+    protected const LOGIN_SHELL = 'export TERM=xterm-256color; cd ~ 2>/dev/null || cd /; '
+        . 'if command -v bash >/dev/null 2>&1; then exec bash -l; else exec sh -l; fi';
+
     /** @return list<array<string,mixed>> */
     public function images(): array
     {

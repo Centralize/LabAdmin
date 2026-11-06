@@ -78,6 +78,13 @@ final class LxcClassicDriver extends ContainerDriver
         return 'lxc-attach -n ' . Shell::q(Shell::name($id)) . ' -- sh -c ' . Shell::q($cmd);
     }
 
+    public function terminalCommand(string $id): string
+    {
+        return 'lxc-attach -n ' . Shell::q(Shell::name($id))
+            . ' --clear-env --set-var TERM=xterm-256color --set-var PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin'
+            . ' -- sh -c ' . Shell::q(self::LOGIN_SHELL);
+    }
+
     public function createSchema(): array
     {
         return [

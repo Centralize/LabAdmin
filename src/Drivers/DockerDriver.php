@@ -91,6 +91,11 @@ final class DockerDriver extends ContainerDriver
         return 'docker exec ' . Shell::q(Shell::name($id)) . ' sh -c ' . Shell::q($cmd);
     }
 
+    public function terminalCommand(string $id): string
+    {
+        return 'docker exec -it -e TERM=xterm-256color ' . Shell::q(Shell::name($id)) . ' sh -c ' . Shell::q(self::LOGIN_SHELL);
+    }
+
     public function images(): array
     {
         $out  = $this->ssh->must("docker images --format '{{json .}}'", true, 30);

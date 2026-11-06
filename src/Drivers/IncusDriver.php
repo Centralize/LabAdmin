@@ -100,6 +100,11 @@ final class IncusDriver extends ContainerDriver
         return $this->bin . ' exec ' . Shell::q(Shell::name($id)) . ' -- sh -c ' . Shell::q($cmd);
     }
 
+    public function terminalCommand(string $id): string
+    {
+        return $this->bin . ' exec ' . Shell::q(Shell::name($id)) . ' --env TERM=xterm-256color -- sh -c ' . Shell::q(self::LOGIN_SHELL);
+    }
+
     public function images(): array
     {
         $j = json_decode($this->ssh->must($this->bin . ' image list --format json', true, 30), true) ?: [];

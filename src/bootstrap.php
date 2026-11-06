@@ -33,6 +33,12 @@ $config = [
     'session_name'    => 'labadmin_sid',
     'session_lifetime'=> 60 * 60 * 8,
     'login_max_fails' => 5,      // per 15 minutes per IP
+    // Interactive terminal service (bin/terminal-server.php)
+    'terminal_listen' => '0.0.0.0',
+    'terminal_port'   => 8081,
+    'terminal_url'    => null,   // e.g. 'wss://labadmin.lan/term' when behind a reverse proxy
+    'terminal_max_sessions' => 20,
+    'terminal_idle_minutes' => 240, // close a terminal after this long without keyboard input
 ];
 $local = LABADMIN_ROOT . '/config.local.php';
 if (is_file($local)) {

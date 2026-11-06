@@ -79,6 +79,20 @@ final class Db
                 PRAGMA user_version = 1;
             SQL);
         }
+        if ($version < 2) {
+            // One-time tokens that hand an authenticated browser session over to the terminal service.
+            $pdo->exec(<<<SQL
+                CREATE TABLE IF NOT EXISTS term_tokens (
+                    token     TEXT PRIMARY KEY,
+                    host_id   INTEGER NOT NULL,
+                    engine    TEXT,
+                    target    TEXT,
+                    username  TEXT NOT NULL,
+                    expires   INTEGER NOT NULL
+                );
+                PRAGMA user_version = 2;
+            SQL);
+        }
     }
 
     /** @return array<int,array<string,mixed>> */

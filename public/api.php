@@ -196,6 +196,52 @@ try {
             }
             respond(['templates' => $d->available()]);
 
+        // ---- interactive terminal -----------------------------------------
+        case 'term.open':
+            $h   = $host();
+            $cfg = $GLOBALS['LABADMIN_CONFIG'];
+            $eng = !empty($in['id']) ? $engine() : null;
+            $tid = $eng ? $id() : null;
+            if ($eng) {
+                Hosts::driver($h, $eng); // validates that the engine exists on this host
+            }
+            // Is the terminal service running? (quick local probe, unless a proxy URL is configured)
+            if (empty($cfg['terminal_url'])) {
+                $probeHost = in_array($cfg['terminal_listen'], ['0.0.0.0', '::', ''], true) ? '127.0.0.1' : $cfg['terminal_listen'];
+                $fp = @fsockopen($probeHost, (int) $cfg['terminal_port'], $errno, $errstr, 0.5);
+                if (!$fp) {
+                    throw new ApiError(
+                        "The terminal service is not running on port {$cfg['terminal_port']}. "
+                        . 'Start LabAdmin with start.bat / start.sh (they now start it too), or run: php bin/terminal-server.php',
+                        503
+                    );
+                }
+                fclose($fp);
+            }
+            $token = bin2hex(random_bytes(32));
+            Db::run('DELETE FROM term_tokens WHERE expires < ?', [time()]);
+            Db::run('INSERT INTO term_tokens (token, host_id, engine, target, username, expires) VALUES (?,?,?,?,?,?)',
+                [$token, (int) $h['id'], $eng, $tid, Auth::user(), time() + 60]);
+            respond(['token' => $token, 'port' => (int) $cfg['terminal_port'], 'url' => $cfg['terminal_url'] ?: null]);
+
+        // ---- file editor --------------------------------------------------
+        case 'file.read':
+            $eng = !empty($in['id']) ? $engine() : null;
+            respond(LabAdmin\Files::read($host(), $eng, $eng ? $id() : null, LabAdmin\Files::path($in['path'] ?? '')));
+
+        case 'file.write':
+            $eng = !empty($in['id']) ? $engine() : null;
+            if (!is_string($in['content'] ?? null)) {
+                throw new ApiError('content missing');
+            }
+            respond(LabAdmin\Files::write(
+                $host(), $eng, $eng ? $id() : null, LabAdmin\Files::path($in['path'] ?? ''),
+                $in['content'], ($in['eol'] ?? 'lf') === 'crlf' ? 'crlf' : 'lf',
+                isset($in['version']) && is_string($in['version']) && $in['version'] !== '' ? $in['version'] : null,
+                !isset($in['backup']) || !empty($in['backup']),
+                !empty($in['force'])
+            ));
+
         // ---- audit --------------------------------------------------------
         case 'audit.list':
             $limit  = Shell::int($in['limit'] ?? 100, 1, 1000, 'limit');

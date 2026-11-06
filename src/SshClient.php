@@ -19,8 +19,27 @@ final class SshClient
 
     private SSH2 $ssh;
 
-    private function __construct(private array $host, private bool $acceptNewKey)
+    private function __construct(private array $host, private bool $acceptNewKey, private string $sshClass = SSH2::class)
     {
+    }
+
+    /**
+     * A dedicated (not pooled) connection prepared for an interactive PTY session.
+     * Used by the terminal service; host-key pinning and login work exactly as for `for()`.
+     */
+    public static function interactive(array $host, int $cols, int $rows): self
+    {
+        $c = new self($host, false, InteractiveSsh::class);
+        $c->connect();
+        $c->ssh->setTerminal('xterm-256color');
+        $c->ssh->setWindowSize(max(20, $cols), max(5, $rows));
+        $c->ssh->enablePTY();
+        return $c;
+    }
+
+    public function raw(): SSH2
+    {
+        return $this->ssh;
     }
 
     public static function for(array $host, bool $acceptNewKey = false): self
@@ -45,7 +64,7 @@ final class SshClient
     {
         $cfg = $GLOBALS['LABADMIN_CONFIG'];
         $h   = $this->host;
-        $this->ssh = new SSH2($h['hostname'], (int) $h['port'], $cfg['ssh_timeout']);
+        $this->ssh = new ($this->sshClass)($h['hostname'], (int) $h['port'], $cfg['ssh_timeout']);
 
         try {
             $serverKey = @$this->ssh->getServerPublicHostKey();

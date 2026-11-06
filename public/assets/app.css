@@ -255,3 +255,41 @@ tr.is-busy { opacity: .55; pointer-events: none; }
 .la-profile.is-on { border-color: var(--accent); background: var(--accent-soft); }
 .la-order { min-width: 16px; height: 16px; border-radius: 8px; background: var(--accent); color: #fff; font-size: .7rem; display: inline-grid; place-items: center; font-family: system-ui, sans-serif; }
 .la-order:empty { display: none; }
+
+/* ---------- Interactive terminal ---------- */
+.la-term-modal { background: rgb(0 0 0 / 55%); }
+.la-term-dialog { display: flex; flex-direction: column; height: 100vh; background: var(--console-bg); }
+.la-term-bar { display: flex; align-items: center; gap: 14px; padding: 8px 14px; background: #121614; border-bottom: 1px solid #262c29; color: #d7e2dc; flex-wrap: wrap; }
+.la-term-title { display: inline-flex; align-items: center; gap: 8px; font-size: .95rem; }
+.la-term-title b { font-family: var(--mono); }
+.la-term-title .uk-text-meta, .la-term-status { color: #8d9892 !important; font-size: .82rem; }
+.la-term-status { display: inline-flex; align-items: center; gap: 6px; }
+.la-term-actions { margin-left: auto; display: flex; gap: 6px; }
+.la-term-actions .uk-button { background: #1f2421; color: #d7e2dc; border-color: #2c332f; }
+.la-term-actions .uk-button:hover { background: #2a312d; color: #fff; }
+.la-term-body { flex: 1; min-height: 0; padding: 6px 4px 4px 10px; }
+.la-term-body .xterm { height: 100%; }
+.la-term-body .xterm-viewport { background: var(--console-bg) !important; }
+
+/* ---------- File editor ---------- */
+.la-edit-dialog { display: flex; flex-direction: column; height: calc(100vh - 60px); max-height: 1100px; }
+.la-edit-dialog .uk-modal-header { flex: none; }
+.la-edit-body { flex: 1; min-height: 0; display: flex; background: var(--console-bg); }
+.la-edit-gutter {
+    flex: none; min-width: 3.2em; padding: 12px 8px 12px 10px; text-align: right; white-space: pre; overflow: hidden;
+    font-family: var(--mono); font-size: 13px; line-height: 1.55; color: #5e6862; background: #101311; user-select: none; border-right: 1px solid #222826;
+}
+.la-edit-area {
+    flex: 1; min-width: 0; resize: none; border: 0; outline: 0; margin: 0; padding: 12px 14px; tab-size: 4;
+    background: var(--console-bg); color: var(--console-fg); caret-color: #4fb39c;
+    font-family: var(--mono); font-size: 13px; line-height: 1.55; white-space: pre; overflow: auto;
+}
+.la-edit-area:disabled { opacity: .6; }
+.la-edit-area[readonly] { color: #a8b4ad; }
+.la-edit-foot { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; flex: none; }
+.la-edit-foot #edit-info { flex: 1; min-width: 200px; }
+.la-dirty { color: var(--warn); margin-left: 6px; font-size: .8em; }
+@media (max-width: 900px) {
+    .la-edit-dialog { height: calc(100vh - 20px); }
+    .la-term-actions .uk-button { padding: 0 8px; }
+}

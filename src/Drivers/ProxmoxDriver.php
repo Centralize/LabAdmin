@@ -116,6 +116,11 @@ final class ProxmoxDriver extends ContainerDriver
         return 'pct exec ' . self::vmid($id) . ' -- sh -c ' . Shell::q($cmd);
     }
 
+    public function terminalCommand(string $id): string
+    {
+        return 'pct exec ' . self::vmid($id) . ' -- sh -c ' . Shell::q(self::LOGIN_SHELL);
+    }
+
     public function images(): array
     {
         $out  = $this->ssh->must('for s in $(pvesm status --content vztmpl 2>/dev/null | awk \'NR>1{print $1}\'); do pveam list "$s" 2>/dev/null | tail -n +2; done', true, 30);
