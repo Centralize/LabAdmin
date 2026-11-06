@@ -248,3 +248,10 @@ tr.is-busy { opacity: .55; pointer-events: none; }
     #user-name { display: none; }
     .la-hide-sm { display: none; }
 }
+
+/* ---------- Profile picker (LXD / Incus create) ---------- */
+.la-profiles { display: flex; flex-wrap: wrap; gap: 8px; }
+.la-profile { display: inline-flex; align-items: center; gap: 6px; padding: 6px 10px; border: 1px solid var(--border); border-radius: 7px; background: var(--surface); cursor: pointer; user-select: none; font-family: var(--mono); font-size: .88rem; }
+.la-profile.is-on { border-color: var(--accent); background: var(--accent-soft); }
+.la-order { min-width: 16px; height: 16px; border-radius: 8px; background: var(--accent); color: #fff; font-size: .7rem; display: inline-grid; place-items: center; font-family: system-ui, sans-serif; }
+.la-order:empty { display: none; }

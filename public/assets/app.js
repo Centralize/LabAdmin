@@ -817,6 +817,9 @@ async function loadSchema(hostId, engine) {
         switch (f.type) {
             case 'select': return `<div>${lbl}<select class="uk-select" name="${f.name}">${f.options.map((o) => `<option ${o === dv ? 'selected' : ''}>${esc(o)}</option>`).join('')}</select></div>`;
             case 'checkbox': return `<div class="la-span"><label><input class="uk-checkbox" type="checkbox" name="${f.name}" ${dv ? 'checked' : ''}> ${esc(f.label)}</label></div>`;
+            case 'profiles': return `<div class="la-span">${lbl}<div class="la-profiles" data-field="${f.name}">
+                ${f.options.map((o) => `<label class="la-profile"><input class="uk-checkbox" type="checkbox" value="${esc(o)}"> <span>${esc(o)}</span> <b class="la-order"></b></label>`).join('')}</div>
+                <div class="uk-text-meta uk-margin-small-top" data-profile-cmd></div></div>`;
             case 'lines': return `<div class="la-span">${lbl}<textarea class="uk-textarea la-mono" rows="3" name="${f.name}" placeholder="${ph}"></textarea></div>`;
             case 'image': return `<div class="la-span">${lbl}<input class="uk-input la-mono" name="${f.name}" ${req} placeholder="${ph}" list="dl-images" value="${esc(dv)}">
                 <datalist id="dl-images">${images.map((i) => `<option value="${esc(i)}">`).join('')}</datalist></div>`;
@@ -825,13 +828,44 @@ async function loadSchema(hostId, engine) {
     };
     form.innerHTML = `<h3>${esc(schema.title)}</h3><div class="la-form-grid">${schema.fields.map(field).join('')}</div>
         <div class="uk-margin-top"><button class="uk-button uk-button-primary" id="create-btn">${icon('plus-circle', 0.8)} Create</button></div>`;
+    // Profile pickers: remember the tick order (later profiles override earlier ones in LXD/Incus).
+    const profileOrder = {};
+    schema.fields.filter((f) => f.type === 'profiles').forEach((f) => {
+        const box = form.querySelector(`.la-profiles[data-field="${f.name}"]`);
+        const saved = store.get(`profiles.${hostId}.${engine}`, null);
+        let order = (saved || f.default || []).filter((p) => f.options.includes(p));
+        const paint = () => {
+            box.querySelectorAll('.la-profile').forEach((lab) => {
+                const cb = lab.querySelector('input');
+                const i = order.indexOf(cb.value);
+                cb.checked = i >= 0;
+                lab.classList.toggle('is-on', i >= 0);
+                lab.querySelector('.la-order').textContent = i >= 0 && order.length > 1 ? i + 1 : '';
+            });
+            const hint = form.querySelector('[data-profile-cmd]');
+            if (hint) hint.textContent = order.length ? order.map((p) => `--profile ${p}`).join(' ') : 'Select at least one profile';
+        };
+        box.addEventListener('change', (e) => {
+            const v = e.target.value;
+            order = e.target.checked ? [...order.filter((p) => p !== v), v] : order.filter((p) => p !== v);
+            paint();
+        });
+        profileOrder[f.name] = () => order;
+        paint();
+    });
+
     form.onsubmit = async (e) => {
         e.preventDefault();
         const params = {};
         schema.fields.forEach((f) => {
+            if (f.type === 'profiles') { params[f.name] = profileOrder[f.name](); return; }
             const el = form.elements[f.name];
             params[f.name] = f.type === 'checkbox' ? el.checked : el.value;
         });
+        if (params.profiles && Array.isArray(params.profiles)) {
+            if (!params.profiles.length) { toast('Select at least one profile', 'warning'); return; }
+            store.set(`profiles.${hostId}.${engine}`, params.profiles);
+        }
         const out = $('#create-out');
         out.hidden = false;
         out.textContent = 'Creating… (image downloads can take a few minutes)';

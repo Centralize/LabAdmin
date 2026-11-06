@@ -98,9 +98,11 @@ final class SshClient
      */
     public function run(string $cmd, bool $privileged = true, ?int $timeout = null): array
     {
-        if ($privileged && !empty($this->host['use_sudo'])) {
-            $cmd = 'sudo -n sh -c ' . Shell::q($cmd);
-        }
+        // Always run under POSIX sh with stdin from /dev/null. Without a TTY, tools such as
+        // `lxc launch` / `incus launch` try to read instance config (YAML) from stdin and
+        // would otherwise wait forever, because the SSH channel's stdin never reaches EOF.
+        $cmd = ($privileged && !empty($this->host['use_sudo']) ? 'sudo -n sh -c ' : 'sh -c ')
+            . Shell::q($cmd) . ' </dev/null';
         $this->ssh->setTimeout($timeout ?? $GLOBALS['LABADMIN_CONFIG']['cmd_timeout']);
         $out = $this->ssh->exec($cmd);
         $res = [
@@ -122,7 +124,7 @@ final class SshClient
     {
         $r = $this->run($cmd, $privileged, $timeout);
         if ($r['timeout']) {
-            throw new ApiError('Command timed out', 504);
+            throw new ApiError(self::timeoutMessage($r, $timeout ?? $GLOBALS['LABADMIN_CONFIG']['cmd_timeout']), 504);
         }
         if ($r['code'] !== 0) {
             $msg = trim($r['err'] !== '' ? $r['err'] : $r['out']);
@@ -132,6 +134,18 @@ final class SshClient
             throw new ApiError($msg !== '' ? $msg : "Command failed (exit {$r['code']})", 500);
         }
         return $r['out'];
+    }
+
+    /** Timeout error that keeps whatever the command printed before it stalled. */
+    public static function timeoutMessage(array $r, int $seconds): string
+    {
+        $partial = trim($r['out'] . ($r['err'] !== '' ? "\n" . $r['err'] : ''));
+        $partial = preg_replace('/[^\n]*\r(?!\n)/', '', $partial); // keep only the last state of progress lines
+        if (strlen($partial) > 4000) {
+            $partial = '...' . substr($partial, -4000);
+        }
+        return "Command timed out after {$seconds}s (it may still be running on the server)."
+            . ($partial !== '' ? "\nOutput before it stalled:\n" . $partial : "\nThe command printed nothing before it stalled.");
     }
 
     public function host(): array

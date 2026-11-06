@@ -138,7 +138,7 @@ final class Hosts
         $ssh = SshClient::for($host);
         $script = <<<'SH'
             has() { command -v "$1" >/dev/null 2>&1; }
-            if has docker; then v=$(docker version --format '{{.Server.Version}}' 2>&1) && echo "docker=$v" || echo "docker_err=$v"; fi
+            if has docker; then v=$(docker version --format '{{.Server.Version}}' 2>&1) && echo "docker=$v" || echo "docker_err=$(echo "$v" | tr '\n' ' ' | cut -c1-300)"; fi
             if has pct; then echo "pct=$(pveversion 2>/dev/null | head -1)"; fi
             if has incus; then v=$(incus version 2>/dev/null | awk -F': ' '/Server/{print $2}'); echo "incus=${v:-unknown}"; fi
             if has lxc && lxc list --format csv -c n >/dev/null 2>&1; then v=$(lxc version 2>/dev/null | awk -F': ' '/Server/{print $2}'); echo "lxd=${v:-unknown}"; fi

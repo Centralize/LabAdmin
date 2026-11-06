@@ -130,8 +130,26 @@ final class IncusDriver extends ContainerDriver
         return $this->audited('image.remove', "{$this->flavor()}:$ref", $this->bin . ' image delete ' . Shell::q($ref) . ' 2>&1', 120);
     }
 
+    /** Profile names defined on the server, in the server's order. */
+    public function profiles(): array
+    {
+        $out = $this->ssh->run($this->bin . ' profile list --format csv', true, 30);
+        if ($out['code'] !== 0) {
+            return [];
+        }
+        $names = [];
+        foreach (Shell::lines($out['out']) as $line) {
+            $n = trim(str_getcsv($line, ',', '"', '\\')[0] ?? '');
+            if ($n !== '' && preg_match('/^[A-Za-z0-9][A-Za-z0-9_.-]{0,127}$/', $n)) {
+                $names[] = $n;
+            }
+        }
+        return $names;
+    }
+
     public function createSchema(): array
     {
+        $profiles = $this->profiles();
         return [
             'title'  => 'New ' . ($this->bin === 'incus' ? 'Incus' : 'LXD') . ' instance',
             'fields' => [
@@ -139,7 +157,9 @@ final class IncusDriver extends ContainerDriver
                 ['name' => 'name',    'label' => 'Instance name', 'type' => 'text', 'required' => true, 'placeholder' => 'web01'],
                 ['name' => 'cpus',    'label' => 'CPU limit (cores)', 'type' => 'number', 'placeholder' => 'unlimited'],
                 ['name' => 'memory',  'label' => 'Memory limit', 'type' => 'text', 'placeholder' => 'e.g. 1GiB'],
-                ['name' => 'profile', 'label' => 'Profile', 'type' => 'text', 'default' => 'default'],
+                $profiles
+                    ? ['name' => 'profiles', 'label' => 'Profiles (applied in the order you tick them)', 'type' => 'profiles', 'options' => $profiles, 'default' => in_array('default', $profiles, true) ? ['default'] : []]
+                    : ['name' => 'profiles', 'label' => 'Profiles (comma-separated, in order)', 'type' => 'text', 'default' => 'default'],
                 ['name' => 'vm',      'label' => 'Virtual machine instead of container', 'type' => 'checkbox', 'default' => false],
                 ['name' => 'nesting', 'label' => 'Enable nesting (Docker inside)', 'type' => 'checkbox', 'default' => false],
             ],
@@ -150,7 +170,24 @@ final class IncusDriver extends ContainerDriver
     {
         $img  = Shell::imageRef($p['image'] ?? '');
         $name = Shell::name($p['name'] ?? '', 'instance name');
-        $args = [$this->bin, 'launch', $img, $name, '--profile', Shell::name(($p['profile'] ?? '') ?: 'default', 'profile')];
+        $args = [$this->bin, 'launch', $img, $name];
+
+        // Profiles: array (from the checkbox list) or comma-separated text; order is kept.
+        $raw = $p['profiles'] ?? ($p['profile'] ?? 'default');
+        $list = is_array($raw) ? $raw : explode(',', (string) $raw);
+        $profiles = [];
+        foreach ($list as $prof) {
+            $prof = trim((string) $prof);
+            if ($prof !== '' && !in_array($prof, $profiles, true)) {
+                $profiles[] = Shell::name($prof, 'profile');
+            }
+        }
+        if (!$profiles) {
+            throw new ApiError('Select at least one profile');
+        }
+        foreach ($profiles as $prof) {
+            array_push($args, '--profile', $prof);
+        }
         if (($c = trim((string) ($p['cpus'] ?? ''))) !== '') {
             array_push($args, '-c', 'limits.cpu=' . Shell::int($c, 1, 1024, 'CPU limit'));
         }

@@ -91,7 +91,7 @@ abstract class ContainerDriver
         try {
             $r = $this->ssh->run($cmd, true, $timeout);
             if ($r['timeout']) {
-                throw new ApiError('Command timed out after ' . $timeout . 's', 504);
+                throw new ApiError(SshClient::timeoutMessage($r, $timeout), 504);
             }
             $out = trim($r['out'] . ($r['err'] !== '' ? "\n" . $r['err'] : ''));
             if ($r['code'] !== 0) {
